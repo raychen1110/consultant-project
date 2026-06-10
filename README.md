@@ -27,8 +27,11 @@ http://localhost:4173
 - 客戶與合約詳細資料側欄
 - CSV 報表匯出
 - 響應式手機版介面
-- 瀏覽器本機資料保存
+- Supabase 雲端資料庫同步
+- 瀏覽器本機備援資料
 
 ## 資料說明
 
-目前為前端 MVP，資料儲存在瀏覽器的 `localStorage`。正式多人使用時，建議接上 PostgreSQL / Supabase，並加入登入、權限、雲端附件與排程通知。
+正式資料儲存在 Supabase PostgreSQL，包含 `clients`、`contracts`、`tasks` 三張資料表。網站載入時會讀取雲端資料，新增及狀態更新也會直接同步到 Supabase；`localStorage` 僅作為暫時的離線備援。
+
+網站使用 Supabase Auth 的 Email 魔法連結登入，資料庫 RLS 僅允許指定管理者帳號存取。目前授權管理者為 `raychen9@gmail.com`。

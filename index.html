@@ -10,7 +10,22 @@
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Noto+Sans+TC:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="styles.css">
 </head>
-<body>
+<body class="auth-locked">
+  <section class="auth-screen" id="authScreen">
+    <div class="auth-card">
+      <div class="brand-mark">C</div>
+      <p class="eyebrow">CONSULTFLOW</p>
+      <h1>登入顧問專案管理</h1>
+      <p>系統會寄送安全登入連結到管理者信箱，不需要輸入密碼。</p>
+      <form id="authForm">
+        <label for="authEmail">管理者 Email</label>
+        <input id="authEmail" type="email" value="raychen9@gmail.com" readonly>
+        <button class="button primary" type="submit">寄送登入連結</button>
+      </form>
+      <div class="auth-message" id="authMessage"></div>
+      <small>客戶與合約資料儲存在 Supabase，僅授權帳號可以存取。</small>
+    </div>
+  </section>
   <div class="app-shell">
     <aside class="sidebar">
       <div class="brand">
@@ -51,7 +66,7 @@
         <div class="user-card">
           <div class="avatar">王</div>
           <div><strong>王怡文</strong><span>管理者</span></div>
-          <button aria-label="帳號選單">•••</button>
+          <button id="logoutButton" aria-label="登出" title="登出">登出</button>
         </div>
       </div>
     </aside>
@@ -224,6 +239,7 @@
   </div>
 
   <div class="toast" id="toast"></div>
+  <script src="config.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

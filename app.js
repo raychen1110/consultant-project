@@ -37,8 +37,210 @@ const seedData = {
 
 const STORAGE_KEY = "consultFlowDataV2";
 const stored = localStorage.getItem(STORAGE_KEY);
-const state = stored ? JSON.parse(stored) : structuredClone(seedData);
+let state = stored ? JSON.parse(stored) : structuredClone(seedData);
 const save = () => localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+const supabaseConfig = window.SUPABASE_CONFIG || {};
+const cloudEnabled = Boolean(supabaseConfig.url && supabaseConfig.publishableKey);
+const AUTH_STORAGE_KEY = "consultFlowAuth";
+const ADMIN_EMAIL = supabaseConfig.adminEmail || "";
+let authSession = null;
+
+function setAuthMessage(message, isError = false) {
+  const element = document.querySelector("#authMessage");
+  if (!element) return;
+  element.textContent = message;
+  element.classList.toggle("error", isError);
+}
+
+function storeSession(session) {
+  authSession = session;
+  localStorage.setItem(AUTH_STORAGE_KEY, JSON.stringify(session));
+}
+
+function clearSession() {
+  authSession = null;
+  localStorage.removeItem(AUTH_STORAGE_KEY);
+  localStorage.removeItem(STORAGE_KEY);
+}
+
+function readSessionFromUrl() {
+  const params = new URLSearchParams(window.location.hash.slice(1));
+  const accessToken = params.get("access_token");
+  if (!accessToken) return null;
+  const expiresIn = Number(params.get("expires_in") || 3600);
+  const session = {
+    access_token: accessToken,
+    refresh_token: params.get("refresh_token"),
+    expires_at: Math.floor(Date.now() / 1000) + expiresIn
+  };
+  history.replaceState(null, "", `${location.pathname}${location.search}`);
+  return session;
+}
+
+async function authApi(path, options = {}) {
+  const response = await fetch(`${supabaseConfig.url}/auth/v1/${path}`, {
+    ...options,
+    headers: {
+      apikey: supabaseConfig.publishableKey,
+      "Content-Type": "application/json",
+      ...options.headers
+    }
+  });
+  const text = await response.text();
+  const data = text ? JSON.parse(text) : null;
+  if (!response.ok) throw new Error(data?.msg || data?.message || "登入服務暫時無法使用");
+  return data;
+}
+
+async function refreshAuthSession(session) {
+  if (!session?.refresh_token) return null;
+  const refreshed = await authApi("token?grant_type=refresh_token", {
+    method: "POST",
+    body: JSON.stringify({ refresh_token: session.refresh_token })
+  });
+  const nextSession = {
+    access_token: refreshed.access_token,
+    refresh_token: refreshed.refresh_token,
+    expires_at: Math.floor(Date.now() / 1000) + Number(refreshed.expires_in || 3600)
+  };
+  storeSession(nextSession);
+  return nextSession;
+}
+
+async function getValidSession() {
+  const fromUrl = readSessionFromUrl();
+  if (fromUrl) storeSession(fromUrl);
+  if (!authSession) {
+    const storedSession = localStorage.getItem(AUTH_STORAGE_KEY);
+    authSession = storedSession ? JSON.parse(storedSession) : null;
+  }
+  if (!authSession) return null;
+  if (authSession.expires_at <= Math.floor(Date.now() / 1000) + 60) {
+    authSession = await refreshAuthSession(authSession);
+  }
+  const user = await authApi("user", {
+    headers: { Authorization: `Bearer ${authSession.access_token}` }
+  });
+  if (user.email !== ADMIN_EMAIL) {
+    clearSession();
+    throw new Error("此帳號沒有管理權限");
+  }
+  return authSession;
+}
+
+async function sendMagicLink() {
+  await authApi(`otp?redirect_to=${encodeURIComponent(location.origin + location.pathname)}`, {
+    method: "POST",
+    body: JSON.stringify({ email: ADMIN_EMAIL, create_user: true })
+  });
+}
+
+function unlockApp() {
+  document.body.classList.remove("auth-locked");
+  document.querySelector("#authScreen").classList.add("hidden");
+}
+
+function lockApp() {
+  document.body.classList.add("auth-locked");
+  document.querySelector("#authScreen").classList.remove("hidden");
+}
+
+async function supabaseRequest(path, options = {}) {
+  if (!cloudEnabled) throw new Error("Supabase 尚未設定");
+  const response = await fetch(`${supabaseConfig.url}/rest/v1/${path}`, {
+    ...options,
+    headers: {
+      apikey: supabaseConfig.publishableKey,
+      Authorization: `Bearer ${authSession?.access_token || ""}`,
+      "Content-Type": "application/json",
+      ...options.headers
+    }
+  });
+  if (!response.ok) {
+    const message = await response.text();
+    throw new Error(message || `Supabase request failed: ${response.status}`);
+  }
+  if (response.status === 204) return null;
+  const text = await response.text();
+  return text ? JSON.parse(text) : null;
+}
+
+const mapClientFromDb = (row) => ({
+  id: Number(row.id),
+  name: row.name,
+  industry: row.industry,
+  status: row.status,
+  consultant: row.consultant,
+  contact: row.contact,
+  email: row.email,
+  phone: row.phone,
+  expectations: row.expectations,
+  painPoints: row.pain_points,
+  lastInteraction: row.last_interaction,
+  nextFollowUp: row.next_follow_up,
+  health: row.health,
+  color: row.color
+});
+
+const mapContractFromDb = (row) => ({
+  id: Number(row.id),
+  clientId: Number(row.client_id),
+  name: row.name,
+  content: row.content,
+  topic: row.topic,
+  start: row.start_date,
+  end: row.end_date,
+  amount: Number(row.amount),
+  status: row.status,
+  hours: Number(row.hours),
+  usedHours: Number(row.used_hours),
+  renewalStage: row.renewal_stage,
+  probability: Number(row.probability),
+  renewalPlan: row.renewal_plan,
+  nextAction: row.next_action,
+  nextActionDate: row.next_action_date,
+  renewalOwner: row.renewal_owner
+});
+
+const mapTaskFromDb = (row) => ({
+  id: Number(row.id),
+  title: row.title,
+  clientId: Number(row.client_id),
+  assignee: row.assignee,
+  due: row.due_date,
+  priority: row.priority,
+  status: row.status
+});
+
+async function loadCloudData() {
+  const [clients, contracts, tasks] = await Promise.all([
+    supabaseRequest("clients?select=*&order=id"),
+    supabaseRequest("contracts?select=*&order=id"),
+    supabaseRequest("tasks?select=*&order=id")
+  ]);
+  state = {
+    clients: clients.map(mapClientFromDb),
+    contracts: contracts.map(mapContractFromDb),
+    tasks: tasks.map(mapTaskFromDb)
+  };
+}
+
+async function insertCloudRecord(table, payload, mapper) {
+  const rows = await supabaseRequest(table, {
+    method: "POST",
+    headers: { Prefer: "return=representation" },
+    body: JSON.stringify(payload)
+  });
+  return mapper(rows[0]);
+}
+
+async function updateCloudRecord(table, id, payload) {
+  await supabaseRequest(`${table}?id=eq.${id}`, {
+    method: "PATCH",
+    headers: { Prefer: "return=minimal" },
+    body: JSON.stringify(payload)
+  });
+}
 
 const $ = (selector, root = document) => root.querySelector(selector);
 const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
@@ -288,36 +490,82 @@ function openModal(type) {
 }
 function closeModal() { $("#modalBackdrop").classList.remove("open"); }
 
-function submitForm(event) {
+async function submitForm(event) {
   event.preventDefault();
   const type = event.currentTarget.dataset.type;
   const data = Object.fromEntries(new FormData(event.currentTarget).entries());
-  if (type === "client") {
-    state.clients.push({
-      id: Date.now(), name: data.name, industry: data.industry || "未分類", status: data.status,
-      consultant: data.consultant, contact: data.contact || "—", email: data.email || "", phone: "",
-      expectations: data.expectations || "尚未填寫", painPoints: data.painPoints || "尚未填寫",
-      lastInteraction: isoOffset(0), nextFollowUp: data.nextFollowUp || isoOffset(7), health: "健康", color: "#477467"
-    });
-  } else if (type === "contract") {
-    const endDays = daysUntil(data.end);
-    state.contracts.push({
-      id: Date.now(), clientId: Number(data.clientId), name: data.name, content: data.content || "尚未填寫",
-      topic: data.topic || "未分類", start: data.start, end: data.end, amount: Number(data.amount || 0),
-      status: endDays < 0 ? "已到期" : endDays <= 90 ? "即將到期" : "有效",
-      hours: 0, usedHours: 0, renewalStage: "未評估", probability: 20,
-      renewalPlan: data.renewalPlan || "尚未規劃", nextAction: "評估續約可能性", nextActionDate: isoOffset(30),
-      renewalOwner: clientById(data.clientId).consultant
-    });
-  } else {
-    state.tasks.push({
-      id: Date.now(), title: data.title, clientId: Number(data.clientId), assignee: data.assignee,
-      due: data.due, priority: data.priority, status: "待處理"
-    });
+  const submitButton = event.currentTarget.querySelector('button[type="submit"]');
+  submitButton.disabled = true;
+  submitButton.textContent = "儲存中…";
+
+  try {
+    if (type === "client") {
+      const payload = {
+        name: data.name,
+        industry: data.industry || "未分類",
+        status: data.status,
+        consultant: data.consultant,
+        contact: data.contact || "—",
+        email: data.email || "",
+        phone: "",
+        expectations: data.expectations || "尚未填寫",
+        pain_points: data.painPoints || "尚未填寫",
+        last_interaction: isoOffset(0),
+        next_follow_up: data.nextFollowUp || isoOffset(7),
+        health: "健康",
+        color: "#477467"
+      };
+      const record = cloudEnabled
+        ? await insertCloudRecord("clients", payload, mapClientFromDb)
+        : mapClientFromDb({ id: Date.now(), ...payload });
+      state.clients.push(record);
+    } else if (type === "contract") {
+      const endDays = daysUntil(data.end);
+      const payload = {
+        client_id: Number(data.clientId),
+        name: data.name,
+        content: data.content || "尚未填寫",
+        topic: data.topic || "未分類",
+        start_date: data.start,
+        end_date: data.end,
+        amount: Number(data.amount || 0),
+        status: endDays < 0 ? "已到期" : endDays <= 90 ? "即將到期" : "有效",
+        hours: 0,
+        used_hours: 0,
+        renewal_stage: "未評估",
+        probability: 20,
+        renewal_plan: data.renewalPlan || "尚未規劃",
+        next_action: "評估續約可能性",
+        next_action_date: isoOffset(30),
+        renewal_owner: clientById(data.clientId).consultant
+      };
+      const record = cloudEnabled
+        ? await insertCloudRecord("contracts", payload, mapContractFromDb)
+        : mapContractFromDb({ id: Date.now(), ...payload });
+      state.contracts.push(record);
+    } else {
+      const payload = {
+        title: data.title,
+        client_id: Number(data.clientId),
+        assignee: data.assignee,
+        due_date: data.due,
+        priority: data.priority,
+        status: "待處理"
+      };
+      const record = cloudEnabled
+        ? await insertCloudRecord("tasks", payload, mapTaskFromDb)
+        : mapTaskFromDb({ id: Date.now(), ...payload });
+      state.tasks.push(record);
+    }
+    closeModal();
+    renderAll();
+    showToast(`${formTemplates[type]().title}完成，已同步雲端`);
+  } catch (error) {
+    console.error(error);
+    showToast("儲存失敗，請檢查網路後再試");
+    submitButton.disabled = false;
+    submitButton.textContent = "儲存資料";
   }
-  closeModal();
-  renderAll();
-  showToast(`${formTemplates[type]().title}完成`);
 }
 
 function openClientDetail(id) {
@@ -368,7 +616,7 @@ function openContractDetail(id) {
   $("#drawerBackdrop").classList.add("open");
 }
 
-document.addEventListener("click", (event) => {
+document.addEventListener("click", async (event) => {
   const nav = event.target.closest("[data-view]");
   const link = event.target.closest("[data-view-link]");
   const modal = event.target.closest("[data-open-modal]");
@@ -385,20 +633,45 @@ document.addEventListener("click", (event) => {
   if (event.target.closest("[data-close-drawer]")) $("#drawerBackdrop").classList.remove("open");
   if (complete) {
     const task = state.tasks.find(t => t.id === Number(complete.dataset.completeTask));
+    const previousStatus = task.status;
     task.status = task.status === "已完成" ? "待處理" : "已完成";
     renderAll();
-    showToast(task.status === "已完成" ? "任務已完成" : "任務已重新開啟");
+    try {
+      if (cloudEnabled) await updateCloudRecord("tasks", task.id, { status: task.status });
+      showToast(task.status === "已完成" ? "任務已完成並同步" : "任務已重新開啟");
+    } catch (error) {
+      console.error(error);
+      task.status = previousStatus;
+      renderAll();
+      showToast("任務更新失敗");
+    }
   }
   const advance = event.target.closest("[data-advance-renewal]");
   if (advance) {
     const stages = ["待接觸", "需求確認", "提案中", "議價中", "成功"];
     const contract = state.contracts.find(c => c.id === Number(advance.dataset.advanceRenewal));
     const index = stages.indexOf(contract.renewalStage);
+    const previousStage = contract.renewalStage;
+    const previousProbability = contract.probability;
     contract.renewalStage = stages[Math.min(index + 1, stages.length - 1)];
     contract.probability = Math.min(contract.probability + 15, 100);
     $("#drawerBackdrop").classList.remove("open");
     renderAll();
-    showToast(`續約階段已更新為「${contract.renewalStage}」`);
+    try {
+      if (cloudEnabled) {
+        await updateCloudRecord("contracts", contract.id, {
+          renewal_stage: contract.renewalStage,
+          probability: contract.probability
+        });
+      }
+      showToast(`續約階段已更新為「${contract.renewalStage}」`);
+    } catch (error) {
+      console.error(error);
+      contract.renewalStage = previousStage;
+      contract.probability = previousProbability;
+      renderAll();
+      showToast("續約階段更新失敗");
+    }
   }
   if (event.target.closest("[data-add-task-client]")) {
     $("#drawerBackdrop").classList.remove("open");
@@ -437,4 +710,54 @@ document.addEventListener("keydown", e => {
   if (e.key === "Escape") { closeModal(); $("#drawerBackdrop").classList.remove("open"); }
 });
 
-renderAll();
+async function bootstrapApp() {
+  lockApp();
+  try {
+    const session = await getValidSession();
+    if (!session) return;
+    await loadCloudData();
+    renderAll();
+    document.body.dataset.storage = "supabase";
+    unlockApp();
+  } catch (error) {
+    console.error(error);
+    clearSession();
+    setAuthMessage(error.message, true);
+  }
+}
+
+document.querySelector("#authForm").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  const button = event.currentTarget.querySelector("button");
+  button.disabled = true;
+  button.textContent = "寄送中…";
+  setAuthMessage("");
+  try {
+    await sendMagicLink();
+    setAuthMessage(`登入連結已寄到 ${ADMIN_EMAIL}，請到信箱點擊連結。`);
+  } catch (error) {
+    console.error(error);
+    setAuthMessage(error.message, true);
+  } finally {
+    button.disabled = false;
+    button.textContent = "寄送登入連結";
+  }
+});
+
+document.querySelector("#logoutButton").addEventListener("click", async () => {
+  try {
+    if (authSession?.access_token) {
+      await authApi("logout", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${authSession.access_token}` }
+      });
+    }
+  } catch (error) {
+    console.error(error);
+  }
+  clearSession();
+  lockApp();
+  setAuthMessage("已安全登出。");
+});
+
+bootstrapApp();
