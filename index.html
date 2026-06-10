@@ -1,0 +1,229 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="顧問專案管理系統">
+  <title>顧問專案管理</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Noto+Sans+TC:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-mark">C</div>
+        <div>
+          <strong>ConsultFlow</strong>
+          <span>顧問專案管理</span>
+        </div>
+      </div>
+
+      <nav class="nav-list" aria-label="主要導覽">
+        <button class="nav-item active" data-view="dashboard">
+          <span class="nav-icon">⌂</span><span>總覽</span>
+        </button>
+        <button class="nav-item" data-view="clients">
+          <span class="nav-icon">◫</span><span>客戶管理</span>
+          <span class="nav-count" id="clientCount">0</span>
+        </button>
+        <button class="nav-item" data-view="contracts">
+          <span class="nav-icon">▤</span><span>合約管理</span>
+        </button>
+        <button class="nav-item" data-view="renewals">
+          <span class="nav-icon">↗</span><span>續約追蹤</span>
+          <span class="nav-count accent" id="renewalCount">0</span>
+        </button>
+        <button class="nav-item" data-view="tasks">
+          <span class="nav-icon">✓</span><span>任務中心</span>
+        </button>
+      </nav>
+
+      <div class="sidebar-bottom">
+        <div class="help-card">
+          <span class="eyebrow">本月目標</span>
+          <strong>續約率 85%</strong>
+          <div class="progress"><span style="width: 72%"></span></div>
+          <small>目前達成 72%</small>
+        </div>
+        <div class="user-card">
+          <div class="avatar">王</div>
+          <div><strong>王怡文</strong><span>管理者</span></div>
+          <button aria-label="帳號選單">•••</button>
+        </div>
+      </div>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <button class="mobile-menu" id="mobileMenu" aria-label="開啟選單">☰</button>
+        <div class="global-search">
+          <span>⌕</span>
+          <input id="globalSearch" type="search" placeholder="搜尋客戶、合約、輔導主題…">
+          <kbd>⌘ K</kbd>
+        </div>
+        <div class="topbar-actions">
+          <button class="icon-button" id="notificationButton" aria-label="通知">
+            ♢<span class="notification-dot"></span>
+          </button>
+          <button class="button primary" id="quickAddButton"><span>＋</span> 新增資料</button>
+        </div>
+      </header>
+
+      <div class="content">
+        <section class="view active" id="dashboardView">
+          <div class="page-heading dashboard-heading">
+            <div>
+              <p class="eyebrow" id="todayLabel"></p>
+              <h1>早安，怡文</h1>
+              <p>這是今天最值得你關注的客戶與合約動態。</p>
+            </div>
+            <div class="heading-actions">
+              <button class="button secondary" id="exportButton">匯出報表</button>
+              <button class="button primary" data-open-modal="client">＋ 新增客戶</button>
+            </div>
+          </div>
+
+          <div class="metric-grid" id="metricGrid"></div>
+
+          <div class="dashboard-grid">
+            <section class="panel span-2">
+              <div class="panel-heading">
+                <div><h2>即將到期合約</h2><p>優先處理 90 天內到期的客戶</p></div>
+                <button class="text-button" data-view-link="contracts">查看全部 →</button>
+              </div>
+              <div class="table-wrap">
+                <table>
+                  <thead><tr><th>客戶</th><th>合約內容</th><th>負責顧問</th><th>到期日</th><th>狀態</th><th></th></tr></thead>
+                  <tbody id="expiringTable"></tbody>
+                </table>
+              </div>
+            </section>
+
+            <section class="panel focus-panel">
+              <div class="panel-heading">
+                <div><h2>今日行動</h2><p>按優先順序完成跟進</p></div>
+                <span class="count-pill" id="todayTaskCount">0</span>
+              </div>
+              <div id="todayTasks" class="task-list"></div>
+              <button class="wide-link" data-view-link="tasks">前往任務中心</button>
+            </section>
+
+            <section class="panel span-2">
+              <div class="panel-heading">
+                <div><h2>續約機會漏斗</h2><p>依目前階段統計合約金額</p></div>
+                <select class="compact-select"><option>本季</option><option>本月</option><option>今年</option></select>
+              </div>
+              <div class="funnel-layout">
+                <div class="funnel-bars" id="funnelBars"></div>
+                <div class="funnel-total">
+                  <span>預估續約金額</span>
+                  <strong id="forecastAmount">$0</strong>
+                  <small>依續約機率加權計算</small>
+                </div>
+              </div>
+            </section>
+
+            <section class="panel">
+              <div class="panel-heading">
+                <div><h2>客戶健康度</h2><p>依互動頻率與續約意願</p></div>
+              </div>
+              <div class="health-chart">
+                <div class="donut"><div><strong id="healthyPercent">0%</strong><span>健康</span></div></div>
+                <div class="legend" id="healthLegend"></div>
+              </div>
+            </section>
+          </div>
+        </section>
+
+        <section class="view" id="clientsView">
+          <div class="page-heading">
+            <div><p class="eyebrow">CLIENTS</p><h1>客戶管理</h1><p>集中查看客戶概況、互動與後續行動。</p></div>
+            <button class="button primary" data-open-modal="client">＋ 新增客戶</button>
+          </div>
+          <div class="toolbar">
+            <div class="search-box"><span>⌕</span><input id="clientSearch" placeholder="搜尋客戶或聯絡人"></div>
+            <select id="clientStatusFilter"><option value="">所有狀態</option><option>服務中</option><option>洽談中</option><option>暫停</option><option>已結案</option></select>
+            <select id="consultantFilter"><option value="">所有顧問</option></select>
+          </div>
+          <div class="panel">
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>客戶名稱</th><th>狀態</th><th>負責顧問</th><th>最近互動</th><th>下次跟進</th><th>目前合約</th><th></th></tr></thead>
+                <tbody id="clientsTable"></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <section class="view" id="contractsView">
+          <div class="page-heading">
+            <div><p class="eyebrow">CONTRACTS</p><h1>合約管理</h1><p>掌握合約期限、金額與服務內容。</p></div>
+            <button class="button primary" data-open-modal="contract">＋ 新增合約</button>
+          </div>
+          <div class="toolbar">
+            <div class="search-box"><span>⌕</span><input id="contractSearch" placeholder="搜尋客戶或合約"></div>
+            <select id="contractStatusFilter"><option value="">所有狀態</option><option>有效</option><option>即將到期</option><option>已到期</option><option>已續約</option></select>
+            <select id="expiryFilter"><option value="">所有到期時間</option><option value="30">30 天內</option><option value="60">60 天內</option><option value="90">90 天內</option></select>
+          </div>
+          <div class="panel">
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>客戶／合約</th><th>期間</th><th>合約金額</th><th>到期日</th><th>剩餘天數</th><th>狀態</th><th></th></tr></thead>
+                <tbody id="contractsTable"></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <section class="view" id="renewalsView">
+          <div class="page-heading">
+            <div><p class="eyebrow">RENEWALS</p><h1>續約追蹤</h1><p>讓每個續約機會都有明確負責人與下一步。</p></div>
+          </div>
+          <div class="renewal-board" id="renewalBoard"></div>
+        </section>
+
+        <section class="view" id="tasksView">
+          <div class="page-heading">
+            <div><p class="eyebrow">TASKS</p><h1>任務中心</h1><p>管理待辦、跟進日期與逾期工作。</p></div>
+            <button class="button primary" data-open-modal="task">＋ 新增任務</button>
+          </div>
+          <div class="task-summary" id="taskSummary"></div>
+          <div class="panel">
+            <div class="table-wrap">
+              <table>
+                <thead><tr><th>完成</th><th>任務</th><th>客戶</th><th>負責人</th><th>截止日</th><th>優先級</th><th>狀態</th></tr></thead>
+                <tbody id="tasksTable"></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+      </div>
+    </main>
+  </div>
+
+  <div class="modal-backdrop" id="modalBackdrop">
+    <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+      <div class="modal-header">
+        <div><p class="eyebrow">NEW RECORD</p><h2 id="modalTitle">新增資料</h2></div>
+        <button class="close-button" id="closeModal" aria-label="關閉">×</button>
+      </div>
+      <div id="quickAddChoices" class="quick-choices">
+        <button data-choice="client"><span>◫</span><strong>新增客戶</strong><small>建立客戶基本資料</small></button>
+        <button data-choice="contract"><span>▤</span><strong>新增合約</strong><small>記錄服務與到期日</small></button>
+        <button data-choice="task"><span>✓</span><strong>新增任務</strong><small>安排後續跟進</small></button>
+      </div>
+      <form id="dataForm" class="data-form"></form>
+    </div>
+  </div>
+
+  <div class="drawer-backdrop" id="drawerBackdrop">
+    <aside class="detail-drawer" id="detailDrawer"></aside>
+  </div>
+
+  <div class="toast" id="toast"></div>
+  <script src="app.js"></script>
+</body>
+</html>
